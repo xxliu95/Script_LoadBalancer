@@ -8,16 +8,16 @@ from lxml import etree
 def parse_args():
     parser = argparse.ArgumentParser(description='DESARROLLO DE UN SCRIPT PARA LA CREACION AUTOMATICA DEL ESCENARIO DEL BALANCEADOR DE LA PRACTICA 3', add_help=False)
 
-    group = parser.add_argument_group('numero de servidores')
-    group.add_argument('N', default=2, nargs="?",type=int, help='N servidores, siendo N el argumento entre 1-5')
+    group1 = parser.add_argument_group('numero de servidores')
+    group1.add_argument('N', default=2, nargs="?",type=int, help='N servidores, siendo N el argumento entre 1-5')
 
-    parser.add_argument('-c','--crear',action='store_true', help='Crea un escenario con N servidores (por defecto N=2)')
-    parser.add_argument('-a','--arrancar', action='store_true', help='Arranca el escenario')
-    parser.add_argument('-p','--parar', action='store_true', help='Para el escenario')
-    parser.add_argument('-d','--destruir', action='store_true', help='Elimina el escenario y todos los ficheros creados')
+    group2 = parser.add_mutually_exclusive_group() # solo se puede elegir una opcion de las siguientes a la vez
+    group2.add_argument('-c','--crear',action='store_true', help='Crea un escenario con N servidores (por defecto N=2)')
+    group2.add_argument('-a','--arrancar', action='store_true', help='Arranca el escenario')
+    group2.add_argument('-p','--parar', action='store_true', help='Para el escenario')
+    group2.add_argument('-d','--destruir', action='store_true', help='Elimina el escenario y todos los ficheros creados')
 
-
-    parser.add_argument('--help', '-h', action='help', default=argparse.SUPPRESS,
+    group2.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
     help='Muestra este mensaje de ayuda.')
     return parser.parse_args()
 
@@ -80,6 +80,15 @@ def crearServ(N):
 
         os.system("sudo virsh define s{}.xml".format(x))
 
+def leerN():
+    N = 0
+    try:
+        with open("pf1.cfg") as f:
+            N = int(f.read().split("=")[1])
+    except IOError:
+        print("No existe el fichero pf1.cfg")
+    return N
+
 def crear(N):
     print("creadno {} servidores".format(N))
     with open("pf1.cfg", "w") as f:
@@ -92,13 +101,7 @@ def crear(N):
     crearServ(N)
 
 def arrancar():
-    N = 0
-    try:
-        with open("pf1.cfg") as f:
-            N = int(f.read().split("=")[1])
-    except IOError:
-        print("No existe el fichero pf1.cfg")
-        return
+    N = leerN()
 
     for x in range(1,N+1):
         os.system("sudo virsh start s{}".format(x))
@@ -106,13 +109,7 @@ def arrancar():
     os.system("sudo virsh start lb")
 
 def parar():
-    N = 0
-    try:
-        with open("pf1.cfg") as f:
-            N = int(f.read().split("=")[1])
-    except IOError:
-        print("No existe el fichero pf1.cfg")
-        return
+    N = leerN()
 
     for x in range(1,N+1):
         os.system("sudo virsh shutdown s{}".format(x))
@@ -120,13 +117,7 @@ def parar():
     os.system("sudo virsh shutdown lb")
 
 def destruir():
-    N = 0
-    try:
-        with open("pf1.cfg") as f:
-            N = int(f.read().split("=")[1])
-    except IOError:
-        print("No existe el fichero pf1.cfg")
-        return
+    N = leerN()
 
     for x in range(1,N+1):
         os.system("sudo virsh destroy s{}".format(x))

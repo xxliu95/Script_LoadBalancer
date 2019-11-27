@@ -26,7 +26,8 @@ def crearLB():
     os.system("qemu-img create -f qcow2 -b cdps-vm-base-pf1.qcow2 lb.qcow2")
     os.system("cp plantilla-vm-pf1.xml lb.xml")
 
-    tree = etree.parse("lb.xml")
+    parser = etree.XMLParser(remove_blank_text=True)
+    tree = etree.parse("lb.xml", parser)
     #print etree.tostring(tree, pretty_print=True)
 
     root = tree.getroot()
@@ -36,17 +37,18 @@ def crearLB():
     disk = root.find("./devices/disk/source")
     disk.set("file", "/mnt/tmp/pf1/lb.qcow2")
 
-    interface1 = root.find("./devices/interface/source")
-    interface1.set("bridge", "LAN1")
+    source1 = root.find("./devices/interface/source")
+    source1.set("bridge", "LAN1")
 
     devices = root.find("./devices")
     interface2 = etree.SubElement(devices, "interface")
-    source = etree.SubElement(interface2, "source")
-    model = etree.SubElement(interface2, "model")
+    source2 = etree.SubElement(interface2, "source")
+    model2 = etree.SubElement(interface2, "model")
     interface2.set("type", "bridge")
-    source.set("bridge", "LAN2")
-    model.set("type", "virtio")
-    devices.append(interface2)
+    source2.set("bridge", "LAN2")
+    model2.set("type", "virtio")
+    interface1 = root.find("./devices/interface")
+    interface1.addnext(interface2)
 
     with open("lb.xml", "w") as f:
         f.write(etree.tostring(tree, pretty_print=True))

@@ -1,4 +1,7 @@
 #!/usr/bin/python
+# Alumnos:
+# Xinxin Liu
+# Fco. Romulo Ballero Garijo
 import os
 import sys
 import argparse
@@ -6,19 +9,21 @@ import argparse
 from lxml import etree
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='DESARROLLO DE UN SCRIPT PARA LA CREACION AUTOMATICA DEL ESCENARIO DEL BALANCEADOR DE LA PRACTICA 3', add_help=False)
+    parser = argparse.ArgumentParser(description='CREACION AUTOMATICA DE UN ESCENARIO DEL BALANCEADOR DE CARGA', add_help=False)
 
     group1 = parser.add_argument_group('numero de servidores')
     group1.add_argument('N', default=2, nargs="?",type=int, help='N servidores, siendo N el argumento entre 1-5')
 
     group2 = parser.add_mutually_exclusive_group() # solo se puede elegir una opcion de las siguientes a la vez
     group2.add_argument('-c','--crear',action='store_true', help='Crea un escenario con N servidores (por defecto N=2)')
-    group2.add_argument('-a','--arrancar', action='store_true', help='Arranca el escenario')
-    group2.add_argument('-p','--parar', action='store_true', help='Para el escenario')
+    group2.add_argument('-a','--arrancar', metavar=("id"), help='Arranca la maquina ID')
+    group2.add_argument('-p','--parar', metavar=("id"), help='Para la maquina ID')
+    group2.add_argument('-ae', action='store_true', help='Arranca el escenario')
+    group2.add_argument('-pe', action='store_true', help='Para el escenario')
     group2.add_argument('-d','--destruir', action='store_true', help='Elimina el escenario y todos los ficheros creados')
+    group2.add_argument('-m','--monitor', action='store_true', help='Monitoriza los estados de las maquinas')
 
-    group2.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS,
-    help='Muestra este mensaje de ayuda.')
+    group2.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help='Muestra este mensaje de ayuda.')
     return parser.parse_args()
 
 # Parte 1 crear
@@ -35,7 +40,7 @@ def crearLB():
     name.text = "lb"
 
     disk = root.find("./devices/disk/source")
-    disk.set("file", "/mnt/tmp/pf1/lb.qcow2")
+    disk.set("file", "{}/lb.qcow2".format(os.getcwd()))
 
     source1 = root.find("./devices/interface/source")
     source1.set("bridge", "LAN1")
@@ -114,8 +119,7 @@ def crearLB():
                 "mode http\n","balance roundrobin\n"])
         for x in range(1,N+1):
             f.write("server s{} 10.0.2.1{}:80 check\n".format(x,x))
-        f.writelines(["listen stats\n","bind :80\n", "stats enable\n",
-                "stats uri /\n", "stats hide-version\n"])
+
     os.system("sudo virt-copy-in -a lb.qcow2 haproxy.cfg /etc/haproxy")
     os.system("rm haproxy.cfg")
 
@@ -133,7 +137,7 @@ def crearServ(N):
         name.text = "s{}".format(x)
 
         disk = root.find("./devices/disk/source")
-        disk.set("file", "/mnt/tmp/pf1/s{}.qcow2".format(x))
+        disk.set("file", "{}/s{}.qcow2".format(os.getcwd(),x))
 
         interface1 = root.find("./devices/interface/source")
         interface1.set("bridge", "LAN2")
@@ -200,16 +204,18 @@ def crear(N):
     crearServ(N)
 
 # Parte 2 arrancar
-def arrancar():
+def arrancarEscenario():
     N = leerN()
 
     for x in range(1,N+1):
         os.system("sudo virsh start s{}".format(x))
+        os.system("xterm -rv -sb -rightbar -fa monospace -fs 10 -title 's{}' -e 'sudo virsh console s{}' &".format(x,x))
 
     os.system("sudo virsh start lb")
+    os.system("xterm -rv -sb -rightbar -fa monospace -fs 10 -title 'lb' -e 'sudo virsh console lb' &")
 
 # Parte 3 parar
-def parar():
+def pararEscenario():
     N = leerN()
 
     for x in range(1,N+1):
@@ -222,21 +228,34 @@ def destruir():
     N = leerN()
 
     for x in range(1,N+1):
-        os.system("sudo virsh destroy s{}".format(x))
         os.system("sudo virsh undefine s{}".format(x))
         os.system("rm -f s{}.qcow2".format(x))
         os.system("rm -f s{}.xml".format(x))
-        #os.system("sudo virsh vol-delete --pool vg0 s{}.qcow2".format(x))
 
-    os.system("sudo virsh destroy lb")
     os.system("sudo virsh undefine lb")
     os.system("rm -f lb.qcow2")
     os.system("rm -f lb.xml")
-    #os.system("sudo virsh vol-delete --pool vg0 lb.qcow2")
 
     os.system("rm -f pf1.cfg")
 
+# Parte opcional 1 monitorizacion
+def monitor():
+    N = leerN()
+    command = "sudo virsh dominfo lb"
+    for x in range(1,N+1):
+        command += " && sudo virsh dominfo s{}".format(x)
+    os.system("xterm -rv -sb -rightbar -fa monospace -fs 10 -title 'Monitor' -e 'watch \"{}\"' &".format(command))
+    return
 
+# Parte opcional 2 arrancar y parar MV individualmente
+def arrancar(id):
+    os.system("sudo virsh start {}".format(id))
+    os.system("xterm -rv -sb -rightbar -fa monospace -fs 10 -title '{}' -e 'sudo virsh console {}' &".format(id,id))
+
+def parar(id):
+    os.system("sudo virsh shutdown {}".format(id))
+
+# __main__
 if __name__ == '__main__':
     args = parse_args()
 
@@ -247,11 +266,20 @@ if __name__ == '__main__':
     if args.crear:
         crear(args.N)
 
+    if args.ae:
+        arrancarEscenario()
+
+    if args.pe:
+        pararEscenario()
+
     if args.arrancar:
-        arrancar()
+        arrancar(args.arrancar)
 
     if args.parar:
-        parar()
+        parar(args.parar)
 
     if args.destruir:
         destruir()
+
+    if args.monitor:
+        monitor()

@@ -56,6 +56,70 @@ def crearLB():
 
     os.system("sudo virsh define lb.xml")
 
+    # fichero hostname
+    with open("hostname", "w") as f:
+        f.write("lb\n")
+    os.system("sudo virt-copy-in -a lb.qcow2 hostname /etc")
+    os.system("rm hostname")
+
+    # fichero hosts
+    with open("hosts", "w") as f:
+        f.writelines(["127.0.1.1 lb\n", "127.0.0.1 localhost\n",
+                    "::1 ip6-localhost ip6-loopback\n", "fe00::0 ip6-localnet\n",
+                    "ff00::0 ip6-mcastprefix\n", "ff02::1 ip6-allnodes\n",
+                    "ff02::2 ip6-allrouters\n", "ff02::3 ip6-allhosts\n"])
+
+    os.system("sudo virt-copy-in -a lb.qcow2 hosts /etc")
+    os.system("rm hosts")
+
+    # fichero interfaces
+    with open("interfaces", "w") as f:
+        f.writelines(["auto lo\n","iface lo inet loopback\n","auto eth0\n",
+                "iface eth0 inet dhcp\n","iface eth0 inet static\n",
+                "address 10.0.1.1\n","netmask 255.255.255.0\n","gateway 10.0.1.1\n",
+                "dns-nameservers 10.0.1.1\n","auto eth1\n","iface eth1 inet static\n",
+                "address 10.0.2.1\n","netmask 255.255.255.0\n","gateway 10.0.2.1\n",
+                "dns-nameservers 10.0.2.1\n"])
+
+    os.system("sudo virt-copy-in -a lb.qcow2 interfaces /etc/network")
+    os.system("rm interfaces")
+
+    # fichero sysctl.conf
+    with open("sysctl.conf", "w") as f:
+        f.write("net.ipv4.ip_forward=1\n")
+    os.system("sudo virt-copy-in -a lb.qcow2 sysctl.conf /etc")
+    os.system("rm sysctl.conf")
+
+    # fichero haproxy.cfg
+    N = leerN()
+    with open("haproxy.cfg", "w") as f:
+        f.writelines([
+                "global\n",
+                "log /dev/log    local0\n",
+                "log /dev/log    local1 notice\n","chroot /var/lib/haproxy\n",
+                "stats socket /run/haproxy/admin.sock mode 660 level admin expose-fd listeners\n",
+                "stats timeout 30s\n","user haproxy\n","group haproxy\n","daemon\n",
+                "ca-base /etc/ssl/certs\n","crt-base /etc/ssl/private\n",
+                "ssl-default-bind-ciphers ECDH+AESGCM:DH+AESGCM:ECDH+AES256:DH+AES256:ECDH+AES128:DH+AES:RSA+AESGCM:RSA+AES:!aNULL:!MD5:!DSS\n",
+                "ssl-default-bind-options no-sslv3\n",
+                "defaults\n","log    global\n","mode    http\n",
+                "option    httplog\n","option    dontlognull\n","timeout connect 5000\n",
+                "timeout client  50000\n","timeout server  50000\n","errorfile 400 /etc/haproxy/errors/400.http\n",
+                "errorfile 403 /etc/haproxy/errors/403.http\n","errorfile 408 /etc/haproxy/errors/408.http\n",
+                "errorfile 500 /etc/haproxy/errors/500.http\n","errorfile 502 /etc/haproxy/errors/502.http\n",
+                "errorfile 503 /etc/haproxy/errors/503.http\n","errorfile 504 /etc/haproxy/errors/504.http\n",
+                "frontend lb\n",
+                "bind *:80\n","mode http\n","default_backend webservers\n",
+                "backend webservers\n",
+                "mode http\n","balance roundrobin\n"])
+        for x in range(1,N+1):
+            f.write("server s{} 10.0.2.1{}:80 check\n".format(x,x))
+        f.writelines(["listen stats\n","bind :80\n", "stats enable\n",
+                "stats uri /\n", "stats hide-version\n"])
+    os.system("sudo virt-copy-in -a lb.qcow2 haproxy.cfg /etc/haproxy")
+    os.system("rm haproxy.cfg")
+
+
 def crearServ(N):
     for x in range(1,N+1):
         os.system("qemu-img create -f qcow2 -b cdps-vm-base-pf1.qcow2 s{}.qcow2".format(x))
@@ -80,6 +144,38 @@ def crearServ(N):
 
         os.system("sudo virsh define s{}.xml".format(x))
 
+        # fichero hostname
+        with open("hostname", "w") as f:
+            f.write("s{}\n".format(x))
+        os.system("sudo virt-copy-in -a s{}.qcow2 hostname /etc".format(x))
+        os.system("rm hostname")
+
+        # fichero hosts
+        with open("hosts", "w") as f:
+            f.writelines(["127.0.1.1 s{}\n".format(x), "127.0.0.1 localhost\n",
+                        "::1 ip6-localhost ip6-loopback\n", "fe00::0 ip6-localnet\n",
+                        "ff00::0 ip6-mcastprefix\n", "ff02::1 ip6-allnodes\n",
+                        "ff02::2 ip6-allrouters\n", "ff02::3 ip6-allhosts\n"])
+
+        os.system("sudo virt-copy-in -a s{}.qcow2 hosts /etc".format(x))
+        os.system("rm hosts")
+
+        # fichero interfaces
+        with open("interfaces", "w") as f:
+            f.writelines(["auto lo\n","iface lo inet loopback\n","auto eth0\n",
+                    "iface eth0 inet dhcp\n","iface eth0 inet static\n",
+                    "address 10.0.2.1{}\n".format(x),"netmask 255.255.255.0\n","gateway 10.0.2.1\n",
+                    "dns-nameservers 10.0.2.1\n"])
+
+        os.system("sudo virt-copy-in -a s{}.qcow2 interfaces /etc/network".format(x))
+        os.system("rm interfaces")
+
+        # fichero index.html
+        with open("index.html", "w") as f:
+            f.write("S{}\n".format(x))
+        os.system("sudo virt-copy-in -a s{}.qcow2 index.html /var/www/html".format(x))
+        os.system("rm index.html")
+
 def leerN():
     N = 0
     try:
@@ -90,16 +186,20 @@ def leerN():
     return N
 
 def crear(N):
-    print("creadno {} servidores".format(N))
+    print("creando {} servidores".format(N))
     with open("pf1.cfg", "w") as f:
         f.write("num_serv={}".format(N))
     os.system("sudo brctl addbr LAN1")
     os.system("sudo brctl addbr LAN2")
     os.system("sudo ifconfig LAN1 up")
     os.system("sudo ifconfig LAN2 up")
+    os.system("sudo ifconfig LAN1 10.0.1.3/24")
+    os.system("sudo ip route add 10.0.0.0/16 via 10.0.1.1")
+
     crearLB()
     crearServ(N)
 
+# Parte 2 arrancar
 def arrancar():
     N = leerN()
 
@@ -108,6 +208,7 @@ def arrancar():
 
     os.system("sudo virsh start lb")
 
+# Parte 3 parar
 def parar():
     N = leerN()
 
@@ -116,17 +217,24 @@ def parar():
 
     os.system("sudo virsh shutdown lb")
 
+# Parte 4 destruir
 def destruir():
     N = leerN()
 
     for x in range(1,N+1):
         os.system("sudo virsh destroy s{}".format(x))
         os.system("sudo virsh undefine s{}".format(x))
+        os.system("rm -f s{}.qcow2".format(x))
+        os.system("rm -f s{}.xml".format(x))
         #os.system("sudo virsh vol-delete --pool vg0 s{}.qcow2".format(x))
 
     os.system("sudo virsh destroy lb")
     os.system("sudo virsh undefine lb")
+    os.system("rm -f lb.qcow2")
+    os.system("rm -f lb.xml")
     #os.system("sudo virsh vol-delete --pool vg0 lb.qcow2")
+
+    os.system("rm -f pf1.cfg")
 
 
 if __name__ == '__main__':

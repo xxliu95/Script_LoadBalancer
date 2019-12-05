@@ -124,6 +124,51 @@ def crearLB():
     os.system("rm haproxy.cfg")
 
 
+def crearC1():
+    os.system("qemu-img create -f qcow2 -b cdps-vm-base-pf1.qcow2 c1.qcow2")
+    os.system("cp plantilla-vm-pf1.xml c1.xml")
+
+    parser = etree.XMLParser(remove_blank_text=True)
+    tree = etree.parse("c1.xml", parser)
+
+    root = tree.getroot()
+    name = root.find("name")
+    name.text = "c1"
+
+    disk = root.find("./devices/disk/source")
+    disk.set("file", "{}/c1.qcow2".format(os.getcwd()))
+
+    source1 = root.find("./devices/interface/source")
+    source1.set("bridge", "LAN1")
+
+    with open("c1.xml", "w") as f:
+        f.write(etree.tostring(tree, pretty_print=True))
+
+    os.system("sudo virsh define c1.xml")
+
+    with open("hostname", "w") as f:
+        f.write("c1\n")
+    os.system("sudo virt-copy-in -a c1.qcow2 hostname /etc")
+    os.system("rm hostname")
+
+    with open("hosts", "w") as f:
+        f.writelines(["127.0.1.1 c1\n", "127.0.0.1 localhost\n",
+                    "::1 ip6-localhost ip6-loopback\n", "fe00::0 ip6-localnet\n",
+                    "ff00::0 ip6-mcastprefix\n", "ff02::1 ip6-allnodes\n",
+                    "ff02::2 ip6-allrouters\n", "ff02::3 ip6-allhosts\n"])
+
+    os.system("sudo virt-copy-in -a c1.qcow2 hosts /etc")
+    os.system("rm hosts")
+
+    with open("interfaces", "w") as f:
+        f.writelines(["auto lo\n","iface lo inet loopback\n","auto eth0\n",
+                "iface eth0 inet dhcp\n","iface eth0 inet static\n",
+                "address 10.0.1.2\n","netmask 255.255.255.0\n","gateway 10.0.1.1\n",
+                "dns-nameservers 10.0.1.1\n"])
+
+    os.system("sudo virt-copy-in -a c1.qcow2 interfaces /etc/network")
+    os.system("rm interfaces")
+
 def crearServ(N):
     for x in range(1,N+1):
         os.system("qemu-img create -f qcow2 -b cdps-vm-base-pf1.qcow2 s{}.qcow2".format(x))
@@ -201,6 +246,7 @@ def crear(N):
     os.system("sudo ip route add 10.0.0.0/16 via 10.0.1.1")
 
     crearLB()
+    crearC1()
     crearServ(N)
 
 # Parte 2 arrancar
@@ -214,6 +260,9 @@ def arrancarEscenario():
     os.system("sudo virsh start lb")
     os.system("xterm -rv -sb -rightbar -fa monospace -fs 10 -title 'lb' -e 'sudo virsh console lb' &")
 
+    os.system("sudo virsh start c1")
+    os.system("xterm -rv -sb -rightbar -fa monospace -fs 10 -title 'c1' -e 'sudo virsh console c1' &")
+
 # Parte 3 parar
 def pararEscenario():
     N = leerN()
@@ -222,6 +271,7 @@ def pararEscenario():
         os.system("sudo virsh shutdown s{}".format(x))
 
     os.system("sudo virsh shutdown lb")
+    os.system("sudo virsh shutdown c1")
 
 # Parte 4 destruir
 def destruir():
@@ -236,12 +286,16 @@ def destruir():
     os.system("rm -f lb.qcow2")
     os.system("rm -f lb.xml")
 
+    os.system("sudo virsh undefine c1")
+    os.system("rm -f c1.qcow2")
+    os.system("rm -f c1.xml")
+
     os.system("rm -f pf1.cfg")
 
 # Parte opcional 1 monitorizacion
 def monitor():
     N = leerN()
-    command = "sudo virsh dominfo lb"
+    command = "sudo virsh dominfo lb && sudo virsh dominfo c1"
     for x in range(1,N+1):
         command += " && sudo virsh dominfo s{}".format(x)
     os.system("xterm -rv -sb -rightbar -fa monospace -fs 10 -title 'Monitor' -e 'watch \"{}\"' &".format(command))
